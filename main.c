@@ -6,7 +6,14 @@
 #include <stdlib.h>
 #include <sys/time.h>
 
+#define DEBUG
+
 #define BULLET_MAX 5
+#ifdef DEBUG
+# define NOATTACK_TICK 500
+#else
+# define NOATTACK_TICK 5000
+#endif
 
 typedef struct Point {
   int x;
@@ -207,7 +214,7 @@ int main(int argc, char **argv){
         break;
     }
 
-    if(status.noattack_tick > 5000){
+    if(status.noattack_tick > NOATTACK_TICK){
       if(player.level < 5){ player.level++; }
       status.noattack_tick = 0;
     }
@@ -247,21 +254,26 @@ void spawn_enemy(Enemy **list_head, GameStatus *status){
 }
 
 void shoot(Bullet **list_head, Player *player, GameStatus *status){
-  Bullet *new_bullet = (Bullet*)malloc(sizeof(Bullet));
+  for(int i=1; i<=(2 * player->level - 1); i++){
+    int y = player->point.y - player->level + i;
+    if(y < 0 || y > status->height - 2){ continue; }
 
-  new_bullet->point.y = player->point.y;
-  new_bullet->point.x = player->point.x + strlen(str);
+    Bullet *new_bullet = (Bullet*)malloc(sizeof(Bullet));
 
-  if(*list_head){
-    (*list_head)->next = new_bullet;
+    new_bullet->point.y = y;
+    new_bullet->point.x = player->point.x + strlen(str);
+
+    if(*list_head){
+      (*list_head)->next = new_bullet;
+    }
+
+    new_bullet->prev = *list_head;
+    new_bullet->next = NULL;
+
+    *list_head = new_bullet;
+
+    status->bullet_count++;
   }
-
-  new_bullet->prev = *list_head;
-  new_bullet->next = NULL;
-
-  *list_head = new_bullet;
-
-  status->bullet_count++;
 }
 
 void show_player_data(Player player, GameStatus *status){
