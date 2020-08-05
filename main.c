@@ -92,13 +92,18 @@ int main(int argc, char **argv){
 	player.point.y = status.height / 2;
 	player.point.x = status.width / 2 - strlen(str);
 
+  if(status.width < 20 || status.height < 20){
+    endwin();
+    return 1;
+  }
+
 	while(1){
 		erase();
 
     if(player.hp <= 0){
       timeout(-1);
       gameover(&player, &status);
-      getch();
+      while(getch() != 'q');
       endwin();
       return 0;
     }
@@ -328,7 +333,7 @@ void show_player_data(Player player, GameStatus *status){
   char gauge[6];
   memset(gauge, '-', 5);
   gauge[5] = '\0';
-  
+
   int i = 0;
   for(i=0; i<player.level; i++){
     gauge[i] = '=';
@@ -359,6 +364,6 @@ void show_wall(GameStatus *status){
 
 void gameover(Player *player, GameStatus *status){
   mvaddstr(status->height / 2, (status->width - strlen(gameover_msg)) / 2, gameover_msg);
-  mvprintw(status->height / 2 + 2, status->width / 2, "SCORE %d", player->score);
+  mvprintw(status->height / 2 + 2, status->width / 2 - 12, "SCORE %6d", player->score);
   flash();
 }
