@@ -9,6 +9,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
+    - name: install ncurses
+      run: sudo apt install libncursesw5-dev
     #- name: configure
     #  run: ./configure
     - name: make
