@@ -6,14 +6,16 @@
 #include <stdlib.h>
 #include <sys/time.h>
 
-#define DEBUG
+//#define DEBUG
 
 #define BULLET_MAX 5
 #ifdef DEBUG
-# define NOATTACK_TICK 500
+# define NOATTACK_TICK 400
 #else
-# define NOATTACK_TICK 5000
+# define NOATTACK_TICK 4000
 #endif
+
+typedef enum ENPCType { ENEMY, FRIEND, BOSS } ENPCType;
 
 typedef struct Point {
   int x;
@@ -28,13 +30,14 @@ typedef struct Player {
   int level;
 } Player;
 
-typedef struct Enemy {
+typedef struct NPC {
+  ENPCType type;
   Point point;
   int max_hp;
   int hp;
-  struct Enemy *prev;
-  struct Enemy *next;
-} Enemy;
+  struct NPC *prev;
+  struct NPC *next;
+} NPC;
 
 typedef struct Bullet {
   Point point;
@@ -52,7 +55,7 @@ typedef struct GameStatus {
   int noattack_tick;
 } GameStatus;
 
-void spawn_enemy(Enemy **list_head, GameStatus *status);
+void spawn_npc(NPC **list_head, GameStatus *status);
 void shoot(Bullet **list_head, Player *player, GameStatus *status);
 void show_player_data(Player player, GameStatus *status);
 bool hit_check(Point point, Bullet *list_head, GameStatus *status);
@@ -60,6 +63,8 @@ void show_wall(GameStatus *status);
 void gameover(Player *player, GameStatus *status);
 
 const char enemy = '#';
+const char friend = '$';
+const char boss = '@';
 const char const *str = "['_']-+=";
 const char bullet = '*';
 
@@ -71,7 +76,7 @@ int main(int argc, char **argv){
   unsigned int interval = 0;
 
   GameStatus status = {0, 0, 0, 0, 0, 1, 0};
-  Enemy *enemy_list_head = NULL;
+  NPC *npc_list_head = NULL;
   Bullet *bullet_list_head = NULL;
 
   Player player = {{0, 0}, 100, 100, 0, 1};
@@ -136,40 +141,65 @@ int main(int argc, char **argv){
       tmp_bullet = tmp_bullet->prev;
     }
 
-    spawn_enemy(&enemy_list_head, &status);
+    spawn_npc(&npc_list_head, &status);
 
-    Enemy *tmp = enemy_list_head;
+    NPC *tmp = npc_list_head;
     while(tmp){
-      bool attack_succeeded = tmp->point.x < status.width / 2;
-      if((update_bullet && hit_check(tmp->point, bullet_list_head, &status)) || attack_succeeded){
+      bool touch_wall = tmp->point.x < status.width / 2;
+      if((update_bullet && hit_check(tmp->point, bullet_list_head, &status)) || touch_wall){
         if(tmp->next){
           tmp->next->prev = tmp->prev;
         }
         else{
-          enemy_list_head = tmp->prev;
+          npc_list_head = tmp->prev;
         }
 
         if(tmp->prev){
           tmp->prev->next = tmp->next;
         }
 
-        Enemy *prev = tmp->prev;
-        free(tmp);
-        tmp = prev;
+        if(tmp->type != FRIEND){
+          status.enemy_count--;
+        }
 
-        status.enemy_count--;
-        if(attack_succeeded){
-          player.hp--;
-          status.noattack_tick = 0;
+        if(touch_wall){
+          if(tmp->type == ENEMY){
+            player.hp--;
+            status.noattack_tick = 0;
+          }
+          else if(tmp->type == BOSS){
+            player.hp -= 10;
+            status.noattack_tick = 0;
+          }
+          else{
+            player.hp += 10;
+            if(player.hp > player.max_hp){ player.hp = player.max_hp; }            
+          }
         }
         else{
-          player.score++;
-          if(player.score > 0 && player.score % 10 == 0){ status.level++; }
+          if(tmp->type == ENEMY){
+            player.score++;
+          }
+          else if(tmp->type == BOSS){
+            player.score += 10;
+            player.level++;
+            if(player.level > 5){ player.level = 5; }
+          }
+          else{
+            player.level--;
+            if(player.level < 1){ player.level = 1; }
+          }
         }
+
+        status.level = player.score / 10 + 1;
+
+        NPC *prev = tmp->prev;
+        free(tmp);
+        tmp = prev;
       }
       else{
         if(status.tick % (10 + 40 / status.level) == 0){ tmp->point.x--; }
-        mvaddch(tmp->point.y, tmp->point.x, enemy);
+        mvaddch(tmp->point.y, tmp->point.x, tmp->type == ENEMY ? enemy : tmp->type == BOSS ? boss : friend);
         tmp = tmp->prev;
       }
     }
@@ -225,31 +255,49 @@ int main(int argc, char **argv){
 	return (0);
 }
 
-void spawn_enemy(Enemy **list_head, GameStatus *status){
+void spawn_npc(NPC **list_head, GameStatus *status){
   struct timeval t;
   gettimeofday(&t, NULL);
   long usec = t.tv_usec;
 
   srand(usec);
-  int p = 200 - 5 * status->level;
+  int p = 200 - 2 * status->level;
   if(p <= 0){ p = 5; }
   if(rand() % p == 0){
-    Enemy *new_enemy = (Enemy*)malloc(sizeof(Enemy));
-
-    new_enemy->point.y = rand() % (status->height - 1);
-    new_enemy->point.x = status->width - 1;
-    new_enemy->max_hp = new_enemy->hp = 10;
-
-    if(*list_head){
-      (*list_head)->next = new_enemy;
+    ENPCType type;
+    switch(rand() % 10){
+      case 7:
+        type = FRIEND;
+        break;
+      case 6:
+        if(status->enemy_count > 15){ return; }
+        type = BOSS;
+        break;
+      default:
+        type = ENEMY;
+        break;
     }
 
-    new_enemy->prev = *list_head;
-    new_enemy->next = NULL;
+    NPC *new_npc = (NPC*)malloc(sizeof(NPC));
 
-    *list_head = new_enemy;
+    new_npc->point.y = rand() % (status->height - 1);
+    new_npc->point.x = status->width - 1;
 
-    status->enemy_count++;
+    new_npc->type = type;
+    new_npc->max_hp = new_npc->hp = 10;
+
+    if(*list_head){
+      (*list_head)->next = new_npc;
+    }
+
+    new_npc->prev = *list_head;
+    new_npc->next = NULL;
+
+    *list_head = new_npc;
+
+    if(type == ENEMY || type == BOSS){
+      status->enemy_count++;
+    }
   }
 }
 
@@ -278,13 +326,15 @@ void shoot(Bullet **list_head, Player *player, GameStatus *status){
 
 void show_player_data(Player player, GameStatus *status){
   char gauge[6];
+  memset(gauge, '-', 5);
+  gauge[5] = '\0';
+  
   int i = 0;
   for(i=0; i<player.level; i++){
     gauge[i] = '=';
   }
-  gauge[++i] = '\0';
 
-  mvprintw(0, 0, "HP:%3d *:%-5s %4d", player.hp, gauge, status->noattack_tick);
+  mvprintw(0, 0, "HP:%3d *:%-5s %4d/%d", player.hp, gauge, status->noattack_tick, NOATTACK_TICK);
   mvprintw(status->height - 1, 0, "LEVEL:%2d SCORE:%4d ENEMY:%d", status->level, player.score, status->enemy_count);
 }
 
