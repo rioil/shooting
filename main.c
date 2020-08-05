@@ -18,6 +18,7 @@ typedef struct Player {
   int max_hp;
   int hp;
   int score;
+  int level;
 } Player;
 
 typedef struct Enemy {
@@ -41,6 +42,7 @@ typedef struct GameStatus {
   int bullet_count;
   int tick;
   int level;
+  int noattack_tick;
 } GameStatus;
 
 void spawn_enemy(Enemy **list_head, GameStatus *status);
@@ -61,11 +63,11 @@ int main(int argc, char **argv){
 
   unsigned int interval = 0;
 
-  GameStatus status = {0, 0, 0, 0, 0, 1};
+  GameStatus status = {0, 0, 0, 0, 0, 1, 0};
   Enemy *enemy_list_head = NULL;
   Bullet *bullet_list_head = NULL;
 
-  Player player = {{0, 0}, 100, 100, 0 };
+  Player player = {{0, 0}, 100, 100, 0, 1};
 
   setlocale(LC_ALL, "");
 	initscr();
@@ -92,6 +94,7 @@ int main(int argc, char **argv){
 		mvaddstr(player.point.y, player.point.x, str);
 
     status.tick++;
+    status.noattack_tick++;
     if(status.tick > 100){ status.tick = 0; }
     interval++;
 
@@ -148,7 +151,10 @@ int main(int argc, char **argv){
         tmp = prev;
 
         status.enemy_count--;
-        if(attack_succeeded){ player.hp--; }
+        if(attack_succeeded){
+          player.hp--;
+          status.noattack_tick = 0;
+        }
         else{
           player.score++;
           if(player.score > 0 && player.score % 10 == 0){ status.level++; }
@@ -199,6 +205,11 @@ int main(int argc, char **argv){
           interval = 0;
         }
         break;
+    }
+
+    if(status.noattack_tick > 5000){
+      if(player.level < 5){ player.level++; }
+      status.noattack_tick = 0;
     }
 
     usleep(10000);
@@ -254,7 +265,15 @@ void shoot(Bullet **list_head, Player *player, GameStatus *status){
 }
 
 void show_player_data(Player player, GameStatus *status){
-  mvprintw(status->height - 1, 0, "LEVEL:%d HP:%d SCORE:%d ENEMY:%d", status->level, player.hp, player.score, status->enemy_count);
+  char gauge[6];
+  int i = 0;
+  for(i=0; i<player.level; i++){
+    gauge[i] = '=';
+  }
+  gauge[++i] = '\0';
+
+  mvprintw(0, 0, "HP:%3d *:%-5s %4d", player.hp, gauge, status->noattack_tick);
+  mvprintw(status->height - 1, 0, "LEVEL:%2d SCORE:%4d ENEMY:%d", status->level, player.score, status->enemy_count);
 }
 
 bool hit_check(Point point, Bullet *list_head, GameStatus *status){
